@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Movie Portal</title>
+    <style>
+        body { background-color: #141414; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: auto; }
+        h1 { color: #e50914; text-align: center; margin-bottom: 30px; }
+        input[type="text"] { width: 100%; padding: 12px; border-radius: 4px; border: none; margin-bottom: 20px; font-size: 16px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; }
+        .card { background: #181818; border-radius: 4px; overflow: hidden; transition: transform 0.2s; cursor: pointer; }
+        .card:hover { transform: scale(1.05); }
+        img { width: 100%; height: 225px; object-fit: cover; display: block; }
+        .title { padding: 10px; font-size: 14px; text-align: center; }
+        /* Modal styles */
+        #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; justify-content: center; align-items: center; flex-direction: column; padding: 20px; }
+        #modal-content { max-width: 800px; width: 100%; background: #181818; border-radius: 8px; overflow: hidden; position: relative; }
+        #close-modal { position: absolute; top: 10px; right: 15px; font-size: 30px; color: white; cursor: pointer; z-index: 101; }
+        .movie-detail { display: flex; gap: 20px; padding: 20px; }
+        .poster { width: 200px; border-radius: 4px; }
+        .info { flex: 1; }
+        .rating { color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 My Movie Database</h1>
+        <input type="text" id="searchInput" placeholder="Search for movies (e.g. Inception, Batman)...">
+        <div id="movieGrid" class="grid"></div>
+    </div>
+
+    <!-- Modal for movie details -->
+    <div id="modal">
+        <span id="close-modal">&times;</span>
+        <div id="modal-content" class="movie-detail">
+            <!-- Filled by JS -->
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = "2bf42ad205de782a19d0864ffa1cfd2c";
+        const searchInput = document.getElementById('searchInput');
+        const movieGrid = document.getElementById('movieGrid');
+        const modal = document.getElementById('modal');
+        const closeModal = document.getElementById('close-modal');
+        const modalContent = document.getElementById('modal-content');
+
+        let searchTimeout;
+
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            if (query.length < 2) {
+                movieGrid.innerHTML = "";
+                return;
+            }
+            searchTimeout = setTimeout(() => fetchMovies(query), 500);
+        });
+
+        async function fetchMovies(query) {
+            try {
+                const response = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${API_KEY}&query=${encodeURIComponent(query)}`);
+                const data = await response.json();
+                displayMovies(data.results);
+            } catch (err) {
+                console.error("Error fetching movies:", err);
+            }
+        }
+
+        function displayMovies(movies) {
+            movieGrid.innerHTML = "";
+            if (movies.length === 0) {
+                movieGrid.innerHTML = "<p style='grid-column: 1/-1; text-align: center; color: #888;'>No movies found.</p>";
+                return;
+            }
+            movies.forEach(movie => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                const posterPath = movie.poster_path 
+                    ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` 
+                    : 'https://via.placeholder.com/150x225/333/fff?text=No+Image';
+                
+                card.innerHTML = `
+                    <img src="${posterPath}" alt="${movie.title}">
+                    <div class="title">${movie.title} (${new Date(movie.release_date).getFullYear() || 'N/A'})</div>
+                `;
+                card.onclick = () => showMovieDetails(movie);
+                movieGrid.appendChild(card);
+            });
+        }
+
+        async function showMovieDetails(movie) {
+            modalContent.innerHTML = `<span id="close-modal">&times;</span><div style="text-align:center; padding:20px;">Loading details...</div>`;
+            modal.style.display = 'flex';
+
+            try {
+                const [movieRes, creditsRes] = await Promise.all([
+                    fetch(`https://api.themoviedb.org/3/movie/${movie.id}?api_key=${API_KEY}`),
+                    fetch(`https://api.themoviedb.org/3/movie/${movie.id}/credits?api_key=${API_KEY}`)
+                ]);
+                const details = await movieRes.json();
+                const credits = await creditsRes.json();
+                const director = credits.crew.find(person => person.job === 'Director')?.name || 'Unknown';
+                const cast = credits.cast.slice(0, 5).map(c => c.name).join(', ');
+
+                const posterPath = details.poster_path 
+                    ? `https://image.tmdb.org/t/p/w500${details.poster_path}` 
+                    : 'https://via.placeholder.com/200x300/333/fff?text=No+Image';
+
+                modalContent.innerHTML = `
+                    <span id="close-modal">&times;</span>
+                    <img src="${posterPath}" class="poster" alt="${details.title}">
+                    <div class="info">
+                        <h2>${details.title} <span style="color:#888; font-weight:normal;">(${new Date(details.release_date).getFullYear()})</span></h2>
+                        <p class="rating">⭐ Rating: ${details.vote_average}/10</p>
+                        <p><strong>Director:</strong> ${director}</p>
+                        <p><strong>Cast:</strong> ${cast}</p>
+                        <p><strong>Plot:</strong> ${details.overview}</p>
+                        <p><strong>Genres:</strong> ${details.genres.map(g => g.name).join(', ')}</p>
+                    </div>
+                `;
+                document.getElementById('close-modal').onclick = () => modal.style.display = 'none';
+            } catch (err) {
+                modalContent.innerHTML = `<span id="close-modal">&times;</span><div style="text-align:center; padding:20px; color:red;">Failed to load details.</div>`;
+            }
+        }
+
+        closeModal.onclick = () => modal.style.display = 'none';
+        window.onclick = (e) => {
+            if (e.target === modal) modal.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
